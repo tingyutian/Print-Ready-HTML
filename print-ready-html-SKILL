@@ -1,0 +1,301 @@
+---
+name: print-ready-html
+description: Use this skill when producing HTML that needs to print correctly — preserving backgrounds, colors, and layout while suppressing browser-injected headers/footers. Triggers include any request for a printable page, print stylesheet, PDF-ready HTML, or whenever the user mentions printing, @media print, or @page rules. Default paper size is Letter portrait unless the user specifies otherwise.
+---
+
+# Print-Ready HTML
+
+Skill for producing HTML that prints correctly across browsers — preserving backgrounds, colors, and layout while suppressing browser-injected headers/footers.
+
+---
+
+## Default paper size
+
+**Always use `Letter portrait` as the default paper size** unless the user specifies otherwise.
+
+```css
+@page {
+  margin: 0;
+  size: Letter portrait; /* DEFAULT — change only if user requests a different size or orientation */
+}
+```
+
+Supported alternatives (use only when user requests):
+
+| User request | `size` value |
+|---|---|
+| A4 | `A4 portrait` |
+| A4 landscape | `A4 landscape` |
+| Letter landscape | `Letter landscape` |
+| Legal | `Legal portrait` |
+
+---
+
+## The core problem
+
+Browsers strip background colors, gradients, and images by default when printing to save ink. Any design relying on backgrounds will appear blank without explicit overrides.
+
+---
+
+## Rules
+
+### 1. Force color fidelity
+
+```css
+* {
+  -webkit-print-color-adjust: exact; /* Chrome, Safari, Edge */
+  print-color-adjust: exact;         /* W3C standard */
+}
+```
+
+Apply to `*`, `body`, and `.page` — the wildcard covers all children, but being explicit on key containers is safer.
+
+---
+
+### 2. Suppress browser auto headers/footers
+
+The browser injects date, page title, URL, and page number into the page margins. Remove them with:
+
+```css
+@page {
+  margin: 0;
+}
+```
+
+> **Critical:** You cannot keep `@page` margins while hiding the browser headers/footers — they live in the same space. If you need breathing room, use padding on `body` instead.
+
+---
+
+### 3. Restore breathing room via body padding
+
+Since `@page { margin: 0 }` removes all margin, compensate with body padding:
+
+```css
+body {
+  padding: 10mm; /* 5mm = tight, 10mm = standard, 15mm = generous */
+}
+```
+
+Use `mm` or `pt` units — they map cleanly to paper. Pixels don't.
+
+---
+
+### 4. Control page breaks
+
+Prevent awkward mid-element splits:
+
+```css
+h2, h3        { page-break-after: avoid; }
+.card, .section { page-break-inside: avoid; }
+```
+
+---
+
+### 5. Prevent content overflow to the next page
+
+Content overflowing onto an unwanted extra page is one of the most common print issues. Apply all of these together.
+
+**Constrain the page container to exact paper dimensions:**
+
+```css
+.page {
+  width: 215.9mm;      /* Letter width */
+  max-height: 279.4mm; /* Letter height — subtract padding as needed */
+  overflow: hidden;
+  box-sizing: border-box;
+}
+```
+
+Paper height reference:
+
+| Paper | Width | Height |
+|-------|-------|--------|
+| Letter portrait | 215.9mm | 279.4mm |
+| A4 portrait | 210mm | 297mm |
+| Letter landscape | 279.4mm | 215.9mm |
+| A4 landscape | 297mm | 210mm |
+
+**Strip any property that forces extra height:**
+
+```css
+@media print {
+  body {
+    min-height: unset;       /* NEVER use 100vh in print */
+    height: auto;
+  }
+  * {
+    min-height: unset !important; /* catch components that hardcode min-height */
+  }
+}
+```
+
+**Dynamically scale content down if it still overflows** — add before `</body>`:
+
+```html
+<script>
+  window.addEventListener('load', () => {
+    const page = document.querySelector('.page');
+    if (!page) return;
+    const paperHeightMm = 279.4; /* Letter — adjust for other paper sizes */
+    const paddingMm = 20;        /* match your body padding (both sides) */
+    const mmToPx = 96 / 25.4;
+    const maxPx = (paperHeightMm - paddingMm) * mmToPx;
+    if (page.scrollHeight > maxPx) {
+      const scale = maxPx / page.scrollHeight;
+      page.style.transform = `scale(${scale})`;
+      page.style.transformOrigin = 'top left';
+      page.style.width = `${100 / scale}%`;
+    }
+  });
+</script>
+```
+
+**Font and spacing safety net** — reduce sizes when content is dense:
+
+```css
+@media print {
+  body      { font-size: 10pt; }   /* reduce from 12pt if needed */
+  p, li     { line-height: 1.4; }  /* tighter than screen default */
+  .section  { margin-bottom: 4mm; }/* avoid large gaps eating height */
+}
+```
+
+---
+
+### 6. Declare paper size
+
+Always declare paper size explicitly. Default to `Letter portrait` unless the user specifies otherwise:
+
+```css
+@page {
+  margin: 0;
+  size: Letter portrait; /* DEFAULT */
+}
+```
+
+---
+
+### 7. Hide screen-only elements
+
+```css
+nav, .sidebar, button, .no-print { display: none; }
+```
+
+Add `class="no-print"` to any element that should never appear in print.
+
+---
+
+### 8. Show link URLs (optional, for documents)
+
+```css
+a[href]::after {
+  content: " (" attr(href) ")";
+  font-size: 10pt;
+  color: #666;
+}
+```
+
+---
+
+## Complete `@media print` template
+
+```css
+@media print {
+  @page {
+    margin: 0;
+    size: Letter portrait; /* DEFAULT — override only if user specifies */
+  }
+
+  * {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  body {
+    background: white;
+    padding: 10mm;
+    min-height: unset; /* remove 100vh if set */
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  .page {
+    box-shadow: none;
+    border-radius: 0;
+    width: 100%;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  h2, h3 {
+    page-break-after: avoid;
+  }
+
+  .card, .section {
+    page-break-inside: avoid;
+  }
+
+  nav, .sidebar, button, .no-print {
+    display: none;
+  }
+}
+```
+
+---
+
+## Chrome print dialog checklist
+
+Even with correct CSS, Chrome has a per-print user toggle:
+
+> **Print dialog → More settings → enable "Background graphics"**
+
+CSS alone cannot force this on — the user controls it.
+
+---
+
+## Design rules summary
+
+| Rule | Why |
+|------|-----|
+| Default to `Letter portrait` | Standard US paper size when user doesn't specify |
+| Use `mm` or `pt` units in print styles | Pixels don't map cleanly to paper |
+| Remove `box-shadow` on containers | Often renders poorly on paper |
+| Remove `border-radius` on containers | Can look odd at print resolution |
+| Avoid `min-height: 100vh` on body | Causes extra blank pages |
+| Google Fonts work fine | Load before print render; no color impact |
+| Gradients, pills, banners all print correctly | As long as `print-color-adjust: exact` is set |
+
+---
+
+## Diagnostics
+
+| Symptom | Cause | Fix |
+|---------|-------|-----|
+| Colors/backgrounds missing | Missing `print-color-adjust: exact` | Add to `*`, `body`, `.page` |
+| Browser date/title showing | Missing `@page { margin: 0 }` | Add inside `@media print` |
+| Content touching paper edge | Missing body padding | `body { padding: 10mm }` |
+| Extra blank page | `min-height: 100vh` or oversized element | Remove from print styles |
+| Shadows/rounded corners look bad | Screen-only decoration in print | `box-shadow: none; border-radius: 0` |
+| Backgrounds still missing after CSS fix | Chrome user toggle off | Print dialog → Background graphics |
+| Page breaks mid-heading or mid-card | No break control | `page-break-after/inside: avoid` |
+| Content overflows Letter page | Wrong paper size assumed | Confirm `size: Letter portrait` in `@page` |
+| Content spills onto a second page | `.page` has no height cap | Set `max-height` to paper height and `overflow: hidden` |
+| Second page appears even with no real content | `min-height: 100vh` or component `min-height` | Strip with `min-height: unset !important` in print styles |
+| Content is cut off at the bottom | `overflow: hidden` too aggressive | Use the JS scale snippet to shrink content to fit instead |
+
+---
+
+## Pre-print checklist
+
+- [ ] `print-color-adjust: exact` on `*`, `body`, `.page`
+- [ ] `@page { margin: 0; size: Letter portrait; }` inside `@media print` (or user-specified size)
+- [ ] `body { padding: 10mm }` inside `@media print`
+- [ ] No `min-height: 100vh` on body in print styles
+- [ ] `box-shadow: none` on containers in print styles
+- [ ] `.page` has `max-height` set to paper height and `overflow: hidden`
+- [ ] No `min-height` on any element in print styles (`unset !important`)
+- [ ] Units use `mm` or `pt` where precision matters
+- [ ] Page-break rules on headings and cards
+- [ ] Screen-only elements hidden with `display: none`
+- [ ] *(User)* Chrome → More settings → "Background graphics" enabled
+- [ ] Tested with Ctrl/Cmd+P before delivery
